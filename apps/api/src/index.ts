@@ -1,5 +1,6 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import { serveStatic } from "@hono/node-server/serve-static";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { and, eq, gt } from "drizzle-orm";
 import { nanoid } from "nanoid";
@@ -95,12 +96,19 @@ app.delete("/api/cards/:id", authMw, async (c) => { await db.delete(schema.cards
 
 app.get("/api/cards/:id/progress-memos", authMw, async (c) => c.json(await db.select().from(schema.progressMemos).where(eq(schema.progressMemos.cardId, c.req.param("id")))));
 app.post("/api/cards/:id/progress-memos", authMw, async (c) => {
+  const cardId = c.req.param("id");
   const parsed = memoSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "bad request" }, 400);
+  const [card] = await db.select().from(schema.cards).where(eq(schema.cards.id, cardId));
+  if (!card) return c.json({ error: "card not found" }, 404);
+
   const now = Date.now();
-  const memo = { id: nanoid(), cardId: c.req.param("id"), body: parsed.data.body, createdAt: now };
-  await db.insert(schema.progressMemos).values(memo);
-  await db.update(schema.cards).set({ lastProgressMemoAt: now, updatedAt: now }).where(eq(schema.cards.id, c.req.param("id")));
+  const memo = { id: nanoid(), cardId, body: parsed.data.body, createdAt: now };
+  await db.transaction(async (tx) => {
+    await tx.insert(schema.progressMemos).values(memo);
+    await tx.update(schema.cards).set({ lastProgressMemoAt: now, updatedAt: now }).where(eq(schema.cards.id, cardId));
+  });
+
   return c.json(memo);
 });
 
@@ -108,9 +116,13 @@ app.get("/api/long-term-goals", authMw, async (c) => c.json(await db.select().fr
 app.put("/api/long-term-goals", authMw, async (c) => {
   const parsed = goalsSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "bad request" }, 400);
-  await db.delete(schema.longTermGoals);
   const now = Date.now();
-  for (const [i, g] of parsed.data.entries()) await db.insert(schema.longTermGoals).values({ id: nanoid(), title: g.title, order: i, createdAt: now, updatedAt: now });
+  await db.transaction(async (tx) => {
+    await tx.delete(schema.longTermGoals);
+    for (const [i, g] of parsed.data.entries()) {
+      await tx.insert(schema.longTermGoals).values({ id: nanoid(), title: g.title, order: i, createdAt: now, updatedAt: now });
+    }
+  });
   return c.json(await db.select().from(schema.longTermGoals));
 });
 
@@ -166,7 +178,7 @@ app.post("/api/settings/background", authMw, async (c) => {
   return c.json({ path: `/uploads/${fileName}` });
 });
 
-app.get("/uploads/:name", async (c) => {
+app.get("/uploads/:name", authMw, async (c) => {
   const safe = path.basename(c.req.param("name"));
   const full = path.join(uploadDir, safe);
   if (!fs.existsSync(full)) return c.json({ error: "not found" }, 404);
@@ -175,5 +187,8 @@ app.get("/uploads/:name", async (c) => {
   const type = ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg";
   return new Response(data, { headers: { "content-type": type } });
 });
+
+app.use("/assets/*", serveStatic({ root: "./apps/web/dist" }));
+app.get("*", serveStatic({ path: "./apps/web/dist/index.html" }));
 
 serve({ fetch: app.fetch, port: Number(process.env.PORT ?? 8787) });

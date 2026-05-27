@@ -26,3 +26,6 @@ npm run test
    - `LIFEOPS_DB_PATH=/data/lifeops.db`
    - `LIFEOPS_UPLOAD_DIR=/data/uploads`
 4. Deploy with `fly deploy`.
+
+Container startup runs migration automatically before launching the API server.
+API serves built web assets from `apps/web/dist`.
