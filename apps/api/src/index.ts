@@ -1,0 +1,34 @@
+import { serve } from "@hono/node-server";
+import { Hono } from "hono";
+import { getCookie, setCookie, deleteCookie } from "hono/cookie";
+import { nanoid } from "nanoid";
+import crypto from "node:crypto";
+import { db, schema } from "./db";
+import { and, desc, eq, gt } from "drizzle-orm";
+import { CARD_STATUSES, COMPASS_NOTE_TYPES, THEMES } from "@lifeops/shared";
+import fs from "node:fs"; import path from "node:path";
+
+const app = new Hono();
+const authMw = async (c:any, next:any)=>{const t=getCookie(c,"lifeops_session"); if(!t) return c.json({error:"Unauthorized"},401); const h=crypto.createHash("sha256").update(t).digest("hex"); const now=Date.now(); const [s]=await db.select().from(schema.sessions).where(and(eq(schema.sessions.tokenHash,h),gt(schema.sessions.expiresAt,now))); if(!s) return c.json({error:"Unauthorized"},401); await next();};
+app.post('/api/auth/login', async c=>{const {password}=await c.req.json(); if(password!==process.env.LIFEOPS_PASSWORD) return c.json({error:"Invalid"},401); const token=nanoid(48); const now=Date.now(); await db.insert(schema.sessions).values({id:nanoid(), tokenHash:crypto.createHash("sha256").update(token).digest("hex"), createdAt:now, expiresAt:now+30*24*3600*1000}); setCookie(c,"lifeops_session",token,{httpOnly:true,sameSite:"Lax",maxAge:30*24*3600,path:"/"}); return c.json({ok:true});});
+app.post('/api/auth/logout',authMw, async c=>{const t=getCookie(c,"lifeops_session")!; const h=crypto.createHash("sha256").update(t).digest("hex"); await db.delete(schema.sessions).where(eq(schema.sessions.tokenHash,h)); deleteCookie(c,"lifeops_session",{path:"/"}); return c.json({ok:true});});
+app.get('/api/auth/me',authMw,c=>c.json({ok:true}));
+app.get('/api/cards',authMw, async c=>c.json(await db.select().from(schema.cards)));
+app.post('/api/cards',authMw, async c=>{const b=await c.req.json(); if(!b.title||!b.period||!THEMES.includes(b.theme)) return c.json({error:"bad"},400); const now=Date.now(); const card={id:nanoid(),title:b.title,period:b.period,theme:b.theme,status:"Todo",createdAt:now,updatedAt:now,deadline:null,detailMemo:null,lastProgressMemoAt:null}; await db.insert(schema.cards).values(card); return c.json(card);});
+app.patch('/api/cards/:id',authMw, async c=>{const id=c.req.param('id'); const b=await c.req.json(); if(b.status && !CARD_STATUSES.includes(b.status)) return c.json({error:'bad'},400); await db.update(schema.cards).set({...b,updatedAt:Date.now()}).where(eq(schema.cards.id,id)); const [card]=await db.select().from(schema.cards).where(eq(schema.cards.id,id)); return c.json(card);});
+app.delete('/api/cards/:id',authMw, async c=>{const id=c.req.param('id'); await db.delete(schema.progressMemos).where(eq(schema.progressMemos.cardId,id)); await db.delete(schema.cards).where(eq(schema.cards.id,id)); return c.json({ok:true});});
+app.get('/api/cards/:id/progress-memos',authMw, async c=>c.json(await db.select().from(schema.progressMemos).where(eq(schema.progressMemos.cardId,c.req.param('id'))).orderBy(desc(schema.progressMemos.createdAt))));
+app.post('/api/cards/:id/progress-memos',authMw, async c=>{const id=c.req.param('id'); const b=await c.req.json(); const memo={id:nanoid(),cardId:id,body:b.body,createdAt:Date.now()}; await db.insert(schema.progressMemos).values(memo); await db.update(schema.cards).set({lastProgressMemoAt:memo.createdAt,updatedAt:Date.now()}).where(eq(schema.cards.id,id)); return c.json(memo);});
+app.get('/api/long-term-goals',authMw, async c=>c.json(await db.select().from(schema.longTermGoals)));
+app.put('/api/long-term-goals',authMw, async c=>{const goals=await c.req.json(); if(goals.length>3) return c.json({error:'max3'},400); await db.delete(schema.longTermGoals); const now=Date.now(); for (const [i,g] of goals.entries()) await db.insert(schema.longTermGoals).values({id:nanoid(), title:g.title, order:i, createdAt:now, updatedAt:now}); return c.json(await db.select().from(schema.longTermGoals));});
+app.get('/api/compass',authMw, async c=>{let [row]=await db.select().from(schema.compass); if(!row){row={id:'singleton',threeMonthDirection:'',updatedAt:Date.now()}; await db.insert(schema.compass).values(row);} return c.json(row)});
+app.patch('/api/compass',authMw, async c=>{const b=await c.req.json(); await db.update(schema.compass).set({threeMonthDirection:b.threeMonthDirection,updatedAt:Date.now()}).where(eq(schema.compass.id,'singleton')); return c.json({ok:true});});
+app.get('/api/compass-notes',authMw, async c=>c.json(await db.select().from(schema.compassNotes)));
+app.post('/api/compass-notes',authMw, async c=>{const b=await c.req.json(); if(!COMPASS_NOTE_TYPES.includes(b.type)) return c.json({error:'bad'},400); const now=Date.now(); const row={id:nanoid(), type:b.type, body:b.body, enabled:b.enabled ?? true, createdAt:now, updatedAt:now}; await db.insert(schema.compassNotes).values(row); return c.json(row)});
+app.patch('/api/compass-notes/:id',authMw, async c=>{await db.update(schema.compassNotes).set({...await c.req.json(),updatedAt:Date.now()}).where(eq(schema.compassNotes.id,c.req.param('id'))); return c.json({ok:true})});
+app.delete('/api/compass-notes/:id',authMw, async c=>{await db.delete(schema.compassNotes).where(eq(schema.compassNotes.id,c.req.param('id'))); return c.json({ok:true})});
+app.get('/api/settings',authMw, async c=>{let [s]=await db.select().from(schema.userSettings); if(!s){const now=Date.now(); s={id:'singleton',backgroundImagePath:null,primaryColor:'#2563eb',accentColor:'#10b981',createdAt:now,updatedAt:now}; await db.insert(schema.userSettings).values(s);} return c.json(s)});
+app.patch('/api/settings',authMw, async c=>{await db.update(schema.userSettings).set({...await c.req.json(),updatedAt:Date.now()}).where(eq(schema.userSettings.id,'singleton')); return c.json({ok:true})});
+app.post('/api/settings/background',authMw, async c=>{const body=await c.req.parseBody(); const f=body.file; if(!(f instanceof File)) return c.json({error:'file'},400); const dir=process.env.LIFEOPS_UPLOAD_DIR ?? './uploads'; fs.mkdirSync(dir,{recursive:true}); const ext=path.extname(f.name)||'.png'; const name=`background${ext}`; const fp=path.join(dir,name); fs.writeFileSync(fp, Buffer.from(await f.arrayBuffer())); await db.update(schema.userSettings).set({backgroundImagePath:name,updatedAt:Date.now()}).where(eq(schema.userSettings.id,'singleton')); return c.json({path:name});});
+
+serve({fetch: app.fetch, port: Number(process.env.PORT ?? 8787)});

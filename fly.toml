@@ -1,0 +1,7 @@
+app = "lifeops"
+[env]
+  LIFEOPS_DB_PATH = "/data/lifeops.db"
+  LIFEOPS_UPLOAD_DIR = "/data/uploads"
+[[mounts]]
+  source="lifeops_data"
+  destination="/data"
