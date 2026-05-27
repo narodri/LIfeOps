@@ -1,17 +1,28 @@
 # LifeOps MVP
 
-## env
-- LIFEOPS_PASSWORD
-- LIFEOPS_DB_PATH (e.g. /data/lifeops.db)
-- LIFEOPS_UPLOAD_DIR (e.g. /data/uploads)
-- PORT
+## Required env
+- `LIFEOPS_PASSWORD` (required)
+- `LIFEOPS_DB_PATH` (example: `/data/lifeops.db`)
+- `LIFEOPS_UPLOAD_DIR` (example: `/data/uploads`)
+- `PORT` (default 8787)
 
-## run
+## Local run
+```bash
 npm install
 npm --workspace @lifeops/api run db:migrate
 npm run dev
+```
 
-## fly
-- mount volume at /data
-- set LIFEOPS_DB_PATH=/data/lifeops.db
-- set LIFEOPS_UPLOAD_DIR=/data/uploads
+## Type check / tests
+```bash
+npm run typecheck
+npm run test
+```
+
+## Fly.io deploy
+1. Create and attach volume to `/data`.
+2. Set secrets/env including `LIFEOPS_PASSWORD`.
+3. Ensure:
+   - `LIFEOPS_DB_PATH=/data/lifeops.db`
+   - `LIFEOPS_UPLOAD_DIR=/data/uploads`
+4. Deploy with `fly deploy`.
