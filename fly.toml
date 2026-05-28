@@ -1,0 +1,16 @@
+app = "lifeops"
+
+[env]
+  LIFEOPS_DB_PATH = "/data/lifeops.db"
+  LIFEOPS_UPLOAD_DIR = "/data/uploads"
+  PORT = "8787"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+
+[[mounts]]
+  source="lifeops_data"
+  destination="/data"
