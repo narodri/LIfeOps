@@ -1,13 +1,16 @@
 {
   "name": "lifeops",
   "private": true,
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "concurrently \"npm:dev:*\"",
     "dev:web": "npm --workspace @lifeops/web run dev",
     "dev:api": "npm --workspace @lifeops/api run dev",
-    "build": "npm run build -ws",
-    "typecheck": "npm run typecheck -ws",
+    "build": "npm --workspace @lifeops/shared run build && npm --workspace @lifeops/api run build && npm --workspace @lifeops/web run build",
+    "typecheck": "npm --workspace @lifeops/shared run typecheck && npm --workspace @lifeops/api run typecheck && npm --workspace @lifeops/web run typecheck",
     "test": "npm run test -ws"
   },
   "devDependencies": {

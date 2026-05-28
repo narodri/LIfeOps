@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { CARD_PERIODS, CARD_STATUSES, COMPASS_NOTE_TYPES, THEMES } from "@lifeops/shared";
-import { db, schema } from "./db";
+import { db, schema } from "./db.js";
 
 const appPassword = process.env.LIFEOPS_PASSWORD;
 if (!appPassword) throw new Error("LIFEOPS_PASSWORD is required");
@@ -104,9 +104,9 @@ app.post("/api/cards/:id/progress-memos", authMw, async (c) => {
 
   const now = Date.now();
   const memo = { id: nanoid(), cardId, body: parsed.data.body, createdAt: now };
-  await db.transaction(async (tx) => {
-    await tx.insert(schema.progressMemos).values(memo);
-    await tx.update(schema.cards).set({ lastProgressMemoAt: now, updatedAt: now }).where(eq(schema.cards.id, cardId));
+  db.transaction((tx) => {
+    tx.insert(schema.progressMemos).values(memo).run();
+    tx.update(schema.cards).set({ lastProgressMemoAt: now, updatedAt: now }).where(eq(schema.cards.id, cardId)).run();
   });
 
   return c.json(memo);
@@ -117,10 +117,10 @@ app.put("/api/long-term-goals", authMw, async (c) => {
   const parsed = goalsSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "bad request" }, 400);
   const now = Date.now();
-  await db.transaction(async (tx) => {
-    await tx.delete(schema.longTermGoals);
+  db.transaction((tx) => {
+    tx.delete(schema.longTermGoals).run();
     for (const [i, g] of parsed.data.entries()) {
-      await tx.insert(schema.longTermGoals).values({ id: nanoid(), title: g.title, order: i, createdAt: now, updatedAt: now });
+      tx.insert(schema.longTermGoals).values({ id: nanoid(), title: g.title, order: i, createdAt: now, updatedAt: now }).run();
     }
   });
   return c.json(await db.select().from(schema.longTermGoals));

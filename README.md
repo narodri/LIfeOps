@@ -29,3 +29,5 @@ npm run test
 
 Container startup runs migration automatically before launching the API server.
 API serves built web assets from `apps/web/dist`.
+
+Production start runs `npm --workspace @lifeops/api run db:migrate:prod` before launching server.

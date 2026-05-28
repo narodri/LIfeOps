@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { db } from "./db.js";
 const s = db.$client;
 s.exec(`
 PRAGMA foreign_keys = ON;
