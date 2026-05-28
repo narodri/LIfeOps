@@ -8,9 +8,6 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "baseUrl": ".",
-    "ignoreDeprecations": "6.0",
-    "paths": {
-      "@lifeops/shared": ["packages/shared/src"]
-    }
+    "ignoreDeprecations": "6.0"
   }
 }

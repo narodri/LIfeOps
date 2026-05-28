@@ -189,6 +189,10 @@ app.get("/uploads/:name", authMw, async (c) => {
 });
 
 app.use("/assets/*", serveStatic({ root: "./apps/web/dist" }));
-app.get("*", serveStatic({ path: "./apps/web/dist/index.html" }));
+const serveWebIndex = serveStatic({ path: "./apps/web/dist/index.html" });
+app.get("*", async (c, next) => {
+  if (c.req.path.startsWith("/api/")) return c.json({ error: "not found" }, 404);
+  return serveWebIndex(c, next);
+});
 
 serve({ fetch: app.fetch, port: Number(process.env.PORT ?? 8787) });
